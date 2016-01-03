@@ -30,6 +30,13 @@
 //	suInit()
 //	Library initialization, will gain access to all syscalls, all services,
 //	and the ARM11 Kernel.
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int suInit();
 
+#ifdef __cplusplus
+}
+#endif
 
