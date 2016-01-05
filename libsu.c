@@ -92,26 +92,21 @@ void patchServiceAccess()
 }
 
 static void kernel_entry() {
-	// Patch SVC access control
-	// Searches the access checks in kernel memory
-	// then patch it in order to skip them.
-	u32* kmem = (u32*)0xdff80000;
-	for(int i = 0; i < 0x10000; i++)
-	{
-		if( kmem[i + 0] == 0x0AFFFFEA &&
-			kmem[i + 1] == 0xE35A0000 &&
-			kmem[i + 2] == 0x0A00000D &&
-			kmem[i + 3] == 0xE3A0E000 )
-		{
-			kmem[i + 0] = 0xE320F000; // NOP
-			kmem[i + 2] = 0xE320F000; // NOP
-		}
-	}
+	// Patch SVC access control mask to allow everyone of them
 	
-	//Invalidate icache and dcache since we edited kernel code
-	__asm ("mov r0, #0");
-	__asm ("mcr p15, 0, r0, c7, c5, 0");
-	__asm ("mcr p15, 0, r0, c7, c10, 0");
+	// First patch the KProcess, for new threads
+	u8* KProcess = (u8*) *((u32*)0xFFFF9004);
+	u8* svcMask = KProcess + (isNew3DS ? 0x90 : 0x88);
+	for(int i = 0; i < 0x10; i++)	
+		*(svcMask + i) = 0xFF;
+	
+	// Then patch the KThread
+	u8* KThread = (u8*) *((u32*)0xFFFF9000);
+	svcMask = (u8*) *((u32*)(KThread + 0x8C)) - 0xC8;
+	for(int i = 0; i < 0x10; i++)	
+		*(svcMask + i) = 0xFF;
+	
+	// Give feedback to the userland side
 	kernelHacked = 0;
 }
 
