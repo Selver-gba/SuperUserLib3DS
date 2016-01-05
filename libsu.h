@@ -27,14 +27,18 @@
 // Comment this in order to not show the exploit progress.
 #define SUDEBUG
 
-//	suInit()
-//	Library initialization, will gain access to all syscalls, all services,
-//	and the ARM11 Kernel.
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+
+/*	
+	Library initialization, will gain access to all syscalls, all services,
+	and the ARM11 Kernel.
+*/
 int suInit();
+
+
 
 #ifdef __cplusplus
 }

