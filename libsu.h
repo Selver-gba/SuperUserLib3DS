@@ -24,9 +24,6 @@
 			Memchunkhax II -> New3DS, Old3DS, 2DS on System Version <= 10.3
 */
 
-// Comment this in order to not show the exploit progress.
-#define SUDEBUG
-
 #ifdef __cplusplus
 extern "C" {
 #endif
