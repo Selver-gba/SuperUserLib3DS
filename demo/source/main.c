@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
 		suPuts(s);
 	}
 	
-	suPuts("Press START to exit.");
+	suPuts("Press START to reset.");
 
     while(aptMainLoop()) {
         hidScanInput();
@@ -103,8 +103,15 @@ int main(int argc, char **argv) {
         }
     }
 
+	suPuts("Resetting");
+	aptOpenSession();
+	APT_HardwareResetAsync();
+	aptCloseSession();
+
 	linearFree(gfxTopLeftFramebuffers[0]);
 	sdmcExit();
 	amExit();
-    return 0;
+
+	while (1)
+		svcSleepThread(UINT64_MAX);
 }
