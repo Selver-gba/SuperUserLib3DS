@@ -29,9 +29,9 @@ include $(DEVKITARM)/3ds_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	source
+SOURCES		:=	source ..
 DATA		:=	data
-INCLUDES	:=	include
+INCLUDES	:=	..
 NO_SMDH		:= 	1
 #ROMFS		:=	romfs
 
